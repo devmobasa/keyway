@@ -7,12 +7,14 @@ use tracing::{error, info};
 pub enum TrayAction {
     TogglePause,
     OpenSettings,
+    ToggleDrag,
     Quit,
 }
 
 #[derive(Default)]
 pub struct TrayState {
     pub paused: bool,
+    pub drag_enabled: bool,
 }
 
 struct VisualizerTray {
@@ -59,11 +61,26 @@ impl Tray for VisualizerTray {
             .map(|s| if s.paused { "Resume" } else { "Pause" })
             .unwrap_or("Pause");
 
+        let drag_label = self
+            .state
+            .lock()
+            .map(|s| if s.drag_enabled { "Disable Drag" } else { "Enable Drag" })
+            .unwrap_or("Enable Drag");
+
         vec![
             MenuItem::Standard(StandardItem {
                 label: pause_label.to_string(),
                 activate: Box::new(|tray: &mut Self| {
                     if let Err(e) = tray.action_sender.send_blocking(TrayAction::TogglePause) {
+                        error!("Failed to send tray action: {}", e);
+                    }
+                }),
+                ..Default::default()
+            }),
+            MenuItem::Standard(StandardItem {
+                label: drag_label.to_string(),
+                activate: Box::new(|tray: &mut Self| {
+                    if let Err(e) = tray.action_sender.send_blocking(TrayAction::ToggleDrag) {
                         error!("Failed to send tray action: {}", e);
                     }
                 }),
@@ -152,6 +169,13 @@ impl TrayHandle {
     pub fn set_paused(&self, paused: bool) {
         if let Ok(mut state) = self.state.lock() {
             state.paused = paused;
+        }
+        self.service_handle.update(|_| {});
+    }
+
+    pub fn set_drag_enabled(&self, enabled: bool) {
+        if let Ok(mut state) = self.state.lock() {
+            state.drag_enabled = enabled;
         }
         self.service_handle.update(|_| {});
     }

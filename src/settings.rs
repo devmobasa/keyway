@@ -44,6 +44,18 @@ pub struct CliArgs {
     /// Keep modifiers active this long after release (ms)
     #[arg(long)]
     pub modifier_grace_ms: Option<u64>,
+
+    /// Enable drag-to-position mode
+    #[arg(long)]
+    pub drag_enabled: Option<bool>,
+
+    /// Custom X position (pixels from left) when position=custom
+    #[arg(long)]
+    pub custom_x: Option<i32>,
+
+    /// Custom Y position (pixels from top) when position=custom
+    #[arg(long)]
+    pub custom_y: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, ValueEnum)]
@@ -57,6 +69,7 @@ pub enum Position {
     TopCenter,
     TopLeft,
     Center,
+    Custom,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,6 +83,9 @@ pub struct Settings {
     pub pause_hotkey: String,
     pub repeat_coalesce_ms: u64,
     pub modifier_grace_ms: u64,
+    pub drag_enabled: bool,
+    pub custom_x: i32,
+    pub custom_y: i32,
 }
 
 impl Default for Settings {
@@ -83,6 +99,9 @@ impl Default for Settings {
             pause_hotkey: "Ctrl+Shift+P".to_string(),
             repeat_coalesce_ms: 200,
             modifier_grace_ms: 120,
+            drag_enabled: false,
+            custom_x: 40,
+            custom_y: 40,
         }
     }
 }
@@ -140,6 +159,15 @@ impl Settings {
         }
         if let Some(modifier_grace_ms) = cli.modifier_grace_ms {
             self.modifier_grace_ms = modifier_grace_ms;
+        }
+        if let Some(drag_enabled) = cli.drag_enabled {
+            self.drag_enabled = drag_enabled;
+        }
+        if let Some(custom_x) = cli.custom_x {
+            self.custom_x = custom_x;
+        }
+        if let Some(custom_y) = cli.custom_y {
+            self.custom_y = custom_y;
         }
     }
     pub fn save_to(&self, path: &Path) -> Result<()> {

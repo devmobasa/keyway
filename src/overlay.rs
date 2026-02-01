@@ -1,7 +1,7 @@
 use crate::combo::ComboItem;
 use crate::settings::{Position, Settings};
 use gtk4::prelude::*;
-use gtk4::{gdk, Application, ApplicationWindow, Box as GtkBox, CenterBox, CssProvider, Label, Orientation};
+use gtk4::{gdk, Application, ApplicationWindow, Box as GtkBox, CenterBox, CssProvider, GestureDrag, Label, Orientation};
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use std::collections::VecDeque;
 
@@ -34,6 +34,8 @@ pub struct OverlayWindow {
     window: ApplicationWindow,
     root: CenterBox,
     container: GtkBox,
+    drag: GestureDrag,
+    drag_enabled: std::cell::Cell<bool>,
 }
 
 impl OverlayWindow {
@@ -59,7 +61,15 @@ impl OverlayWindow {
 
         window.set_keyboard_mode(KeyboardMode::None);
 
-        apply_position(&window, &root, &container, settings.position, settings.margin);
+        apply_position(
+            &window,
+            &root,
+            &container,
+            settings.position,
+            settings.margin,
+            settings.custom_x,
+            settings.custom_y,
+        );
         window.set_exclusive_zone(0);
 
         window.set_child(Some(&root));
@@ -69,10 +79,16 @@ impl OverlayWindow {
 
         window.present();
 
+        let drag = GestureDrag::new();
+        drag.set_button(0);
+        root.add_controller(drag.clone());
+
         Self {
             window,
             root,
             container,
+            drag,
+            drag_enabled: std::cell::Cell::new(false),
         }
     }
 
@@ -99,9 +115,59 @@ impl OverlayWindow {
         self.window.queue_resize();
     }
 
-    pub fn update_position(&self, position: Position, margin: i32) {
-        apply_position(&self.window, &self.root, &self.container, position, margin);
+    pub fn update_position(&self, settings: &Settings) {
+        apply_position(
+            &self.window,
+            &self.root,
+            &self.container,
+            settings.position,
+            settings.margin,
+            settings.custom_x,
+            settings.custom_y,
+        );
         self.window.queue_resize();
+    }
+
+    pub fn set_drag_enabled(&self, enabled: bool) {
+        self.drag_enabled.set(enabled);
+        self.window.set_can_target(enabled);
+    }
+
+    pub fn connect_drag_handlers<F1, F2, F3>(&self, on_begin: F1, on_update: F2, on_end: F3)
+    where
+        F1: Fn(f64, f64) + 'static,
+        F2: Fn(f64, f64) + 'static,
+        F3: Fn() + 'static,
+    {
+        let enabled = self.drag_enabled.clone();
+        self.drag.connect_drag_begin(move |_, x, y| {
+            if enabled.get() {
+                on_begin(x, y);
+            }
+        });
+        let enabled = self.drag_enabled.clone();
+        self.drag.connect_drag_update(move |_, dx, dy| {
+            if enabled.get() {
+                on_update(dx, dy);
+            }
+        });
+        let enabled = self.drag_enabled.clone();
+        self.drag.connect_drag_end(move |_, _x, _y| {
+            if enabled.get() {
+                on_end();
+            }
+        });
+    }
+
+    pub fn window_size(&self) -> (i32, i32) {
+        (self.window.allocated_width(), self.window.allocated_height())
+    }
+
+    pub fn monitor_geometry(&self) -> Option<gdk::Rectangle> {
+        let surface = self.window.surface()?;
+        let display = surface.display();
+        let monitor = display.monitor_at_surface(&surface)?;
+        Some(monitor.geometry())
     }
 }
 
@@ -123,6 +189,8 @@ fn apply_position(
     container: &GtkBox,
     position: Position,
     margin: i32,
+    custom_x: i32,
+    custom_y: i32,
 ) {
     apply_size_for_position(window, position, margin);
 
@@ -187,12 +255,27 @@ fn apply_position(
             root.set_center_widget(Some(container));
             container.set_valign(gtk4::Align::Center);
         }
+        Position::Custom => {
+            window.set_anchor(Edge::Top, true);
+            window.set_anchor(Edge::Bottom, false);
+            window.set_anchor(Edge::Left, true);
+            window.set_anchor(Edge::Right, false);
+            root.set_start_widget(Some(container));
+            container.set_valign(gtk4::Align::Start);
+        }
     }
 
-    window.set_margin(Edge::Top, margin);
-    window.set_margin(Edge::Bottom, margin);
-    window.set_margin(Edge::Left, margin);
-    window.set_margin(Edge::Right, margin);
+    if matches!(position, Position::Custom) {
+        window.set_margin(Edge::Top, custom_y);
+        window.set_margin(Edge::Bottom, 0);
+        window.set_margin(Edge::Left, custom_x);
+        window.set_margin(Edge::Right, 0);
+    } else {
+        window.set_margin(Edge::Top, margin);
+        window.set_margin(Edge::Bottom, margin);
+        window.set_margin(Edge::Left, margin);
+        window.set_margin(Edge::Right, margin);
+    }
 }
 
 fn apply_size_for_position(window: &ApplicationWindow, position: Position, margin: i32) {
@@ -204,6 +287,7 @@ fn apply_size_for_position(window: &ApplicationWindow, position: Position, margi
 
     if !(span_x || span_y) {
         window.set_default_size(-1, -1);
+        window.set_size_request(-1, -1);
         return;
     }
 
@@ -233,4 +317,5 @@ fn apply_size_for_position(window: &ApplicationWindow, position: Position, margi
     };
 
     window.set_default_size(width, height);
+    window.set_size_request(width, height);
 }

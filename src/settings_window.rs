@@ -5,7 +5,7 @@ use gtk4::{
     Label, Orientation, SpinButton, StringList, Switch,
 };
 
-const POSITIONS: [&str; 7] = [
+const POSITIONS: [&str; 8] = [
     "bottom-right",
     "bottom-center",
     "bottom-left",
@@ -13,6 +13,7 @@ const POSITIONS: [&str; 7] = [
     "top-center",
     "top-left",
     "center",
+    "custom",
 ];
 
 pub struct SettingsWindow {
@@ -25,6 +26,9 @@ pub struct SettingsWindow {
     pause_hotkey: Entry,
     repeat_coalesce_ms: SpinButton,
     modifier_grace_ms: SpinButton,
+    drag_enabled: Switch,
+    custom_x: SpinButton,
+    custom_y: SpinButton,
     status: Label,
     apply_button: Button,
     save_button: Button,
@@ -58,6 +62,9 @@ impl SettingsWindow {
         let pause_hotkey = Entry::new();
         let repeat_coalesce_ms = spin_i32(200, 0, 1000, 20);
         let modifier_grace_ms = spin_i32(120, 0, 1000, 10);
+        let drag_enabled = Switch::new();
+        let custom_x = spin_i32(40, 0, 5000, 10);
+        let custom_y = spin_i32(40, 0, 5000, 10);
 
         attach_row(&grid, 0, "Position", &position);
         attach_row(&grid, 1, "Margin", &margin);
@@ -67,6 +74,9 @@ impl SettingsWindow {
         attach_row(&grid, 5, "Pause hotkey", &pause_hotkey);
         attach_row(&grid, 6, "Repeat coalesce (ms)", &repeat_coalesce_ms);
         attach_row(&grid, 7, "Modifier grace (ms)", &modifier_grace_ms);
+        attach_row(&grid, 8, "Drag mode", &drag_enabled);
+        attach_row(&grid, 9, "Custom X", &custom_x);
+        attach_row(&grid, 10, "Custom Y", &custom_y);
 
         let status = Label::new(None);
         status.set_wrap(true);
@@ -98,6 +108,9 @@ impl SettingsWindow {
             pause_hotkey,
             repeat_coalesce_ms,
             modifier_grace_ms,
+            drag_enabled,
+            custom_x,
+            custom_y,
             status,
             apply_button,
             save_button,
@@ -120,6 +133,9 @@ impl SettingsWindow {
             .set_value(settings.repeat_coalesce_ms as f64);
         self.modifier_grace_ms
             .set_value(settings.modifier_grace_ms as f64);
+        self.drag_enabled.set_active(settings.drag_enabled);
+        self.custom_x.set_value(settings.custom_x as f64);
+        self.custom_y.set_value(settings.custom_y as f64);
         self.set_status("");
     }
 
@@ -133,6 +149,9 @@ impl SettingsWindow {
             pause_hotkey: self.pause_hotkey.text().to_string(),
             repeat_coalesce_ms: self.repeat_coalesce_ms.value() as u64,
             modifier_grace_ms: self.modifier_grace_ms.value() as u64,
+            drag_enabled: self.drag_enabled.is_active(),
+            custom_x: self.custom_x.value() as i32,
+            custom_y: self.custom_y.value() as i32,
             ..base.clone()
         }
     }
@@ -175,6 +194,7 @@ fn position_to_index(position: Position) -> u32 {
         Position::TopCenter => 4,
         Position::TopLeft => 5,
         Position::Center => 6,
+        Position::Custom => 7,
     }
 }
 
@@ -186,6 +206,7 @@ fn index_to_position(index: u32) -> Position {
         4 => Position::TopCenter,
         5 => Position::TopLeft,
         6 => Position::Center,
+        7 => Position::Custom,
         _ => Position::BottomRight,
     }
 }

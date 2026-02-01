@@ -74,6 +74,7 @@ fn build_ui(app: &Application, settings: Settings, config_path: PathBuf) -> Resu
         .unwrap_or((None, None));
 
     let overlay = OverlayWindow::new(app, &settings);
+    overlay.set_drag_enabled(settings.drag_enabled);
     let listener_handle = start_listener(&tx, settings.show_mouse)?;
 
     let state = Rc::new(RefCell::new(AppState {
@@ -85,7 +86,32 @@ fn build_ui(app: &Application, settings: Settings, config_path: PathBuf) -> Resu
         listener_handle,
         tray_handle,
         settings_window: None,
+        dragging: false,
+        drag_base_x: 0,
+        drag_base_y: 0,
     }));
+
+    if let Some(handle) = &state.borrow().tray_handle {
+        handle.set_drag_enabled(state.borrow().settings.drag_enabled);
+    }
+
+    {
+        let state_begin = Rc::clone(&state);
+        let state_update = Rc::clone(&state);
+        let state_end = Rc::clone(&state);
+        let overlay = state.borrow().overlay.clone();
+        overlay.connect_drag_handlers(
+            move |_x, _y| {
+                state_begin.borrow_mut().begin_drag();
+            },
+            move |dx, dy| {
+                state_update.borrow_mut().update_drag(dx, dy);
+            },
+            move || {
+                state_end.borrow_mut().end_drag();
+            },
+        );
+    }
 
     start_event_pump(app.clone(), rx, tray_rx, Rc::clone(&state));
 
@@ -116,6 +142,13 @@ fn start_event_pump(
                 }
                 TrayAction::OpenSettings => {
                     open_settings = true;
+                }
+                TrayAction::ToggleDrag => {
+                    let mut app_state = state.borrow_mut();
+                    app_state.toggle_drag();
+                    if let Some(handle) = &app_state.tray_handle {
+                        handle.set_drag_enabled(app_state.settings.drag_enabled);
+                    }
                 }
                 TrayAction::Quit => {
                     quit = true;
@@ -269,6 +302,9 @@ struct AppState {
     listener_handle: input::ListenerHandle,
     tray_handle: Option<TrayHandle>,
     settings_window: Option<Rc<SettingsWindow>>,
+    dragging: bool,
+    drag_base_x: i32,
+    drag_base_y: i32,
 }
 
 impl AppState {
@@ -280,8 +316,11 @@ impl AppState {
             self.listener_handle = new_handle;
         }
 
-        self.overlay
-            .update_position(new_settings.position, new_settings.margin);
+        self.overlay.update_position(&new_settings);
+        self.overlay.set_drag_enabled(new_settings.drag_enabled);
+        if let Some(handle) = &self.tray_handle {
+            handle.set_drag_enabled(new_settings.drag_enabled);
+        }
 
         self.combo.update_settings(
             new_settings.max_items,
@@ -296,4 +335,119 @@ impl AppState {
 
         Ok(())
     }
+
+    fn toggle_drag(&mut self) {
+        self.settings.drag_enabled = !self.settings.drag_enabled;
+        self.overlay.set_drag_enabled(self.settings.drag_enabled);
+        if let Some(window) = &self.settings_window {
+            window.set_from_settings(&self.settings);
+        }
+    }
+
+    fn begin_drag(&mut self) {
+        if !self.settings.drag_enabled {
+            return;
+        }
+
+        let (window_w, window_h) = self.overlay.window_size();
+        let geometry = match self.overlay.monitor_geometry() {
+            Some(g) => g,
+            None => return,
+        };
+
+        let monitor_w = geometry.width();
+        let monitor_h = geometry.height();
+
+        let (base_x, base_y) = compute_custom_offsets(
+            self.settings.position,
+            self.settings.margin,
+            self.settings.custom_x,
+            self.settings.custom_y,
+            window_w,
+            window_h,
+            monitor_w,
+            monitor_h,
+        );
+
+        self.dragging = true;
+        self.drag_base_x = base_x;
+        self.drag_base_y = base_y;
+
+        self.settings.position = settings::Position::Custom;
+        self.settings.custom_x = base_x;
+        self.settings.custom_y = base_y;
+        self.overlay.update_position(&self.settings);
+
+        if let Some(window) = &self.settings_window {
+            window.set_from_settings(&self.settings);
+        }
+    }
+
+    fn update_drag(&mut self, dx: f64, dy: f64) {
+        if !self.dragging || !self.settings.drag_enabled {
+            return;
+        }
+
+        let geometry = match self.overlay.monitor_geometry() {
+            Some(g) => g,
+            None => return,
+        };
+        let (window_w, window_h) = self.overlay.window_size();
+
+        let max_x = (geometry.width() - window_w).max(0);
+        let max_y = (geometry.height() - window_h).max(0);
+
+        let mut new_x = self.drag_base_x + dx.round() as i32;
+        let mut new_y = self.drag_base_y + dy.round() as i32;
+
+        new_x = new_x.clamp(0, max_x);
+        new_y = new_y.clamp(0, max_y);
+
+        self.settings.custom_x = new_x;
+        self.settings.custom_y = new_y;
+        self.settings.position = settings::Position::Custom;
+
+        self.overlay.update_position(&self.settings);
+
+        if let Some(window) = &self.settings_window {
+            window.set_from_settings(&self.settings);
+        }
+    }
+
+    fn end_drag(&mut self) {
+        self.dragging = false;
+    }
+}
+
+fn compute_custom_offsets(
+    position: settings::Position,
+    margin: i32,
+    custom_x: i32,
+    custom_y: i32,
+    window_w: i32,
+    window_h: i32,
+    monitor_w: i32,
+    monitor_h: i32,
+) -> (i32, i32) {
+    let center_x = (monitor_w - window_w).max(0) / 2;
+    let center_y = (monitor_h - window_h).max(0) / 2;
+
+    let (mut x, mut y) = match position {
+        settings::Position::BottomRight => (
+            monitor_w - window_w - margin,
+            monitor_h - window_h - margin,
+        ),
+        settings::Position::BottomCenter => (center_x, monitor_h - window_h - margin),
+        settings::Position::BottomLeft => (margin, monitor_h - window_h - margin),
+        settings::Position::TopRight => (monitor_w - window_w - margin, margin),
+        settings::Position::TopCenter => (center_x, margin),
+        settings::Position::TopLeft => (margin, margin),
+        settings::Position::Center => (center_x, center_y),
+        settings::Position::Custom => (custom_x, custom_y),
+    };
+
+    x = x.clamp(0, (monitor_w - window_w).max(0));
+    y = y.clamp(0, (monitor_h - window_h).max(0));
+
+    (x, y)
 }

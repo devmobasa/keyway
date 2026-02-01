@@ -37,6 +37,9 @@ show_mouse = true
 pause_hotkey = "Ctrl+Shift+P"
 repeat_coalesce_ms = 200
 modifier_grace_ms = 120
+drag_enabled = false
+custom_x = 40
+custom_y = 40
 ```
 
 You can override via CLI:
@@ -46,6 +49,7 @@ cargo run -- --position top-left --ttl-ms 1200 --show-mouse false
 ```
 
 Positions supported: `bottom-right`, `bottom-center`, `bottom-left`, `top-right`, `top-center`, `top-left`, `center`.
+Use `custom` with `custom_x/custom_y` for pixel placement, or enable drag mode and move the overlay.
 
 Hotkey parsing accepts tokens like `Ctrl+Shift+P`, `Super+F13`, and named keys like `Plus` or `Comma` for symbols.
 
@@ -73,3 +77,4 @@ Alternatively, set up a udev rule to grant read access.
 - Items fade out after ~900ms.
 - Pause/resume capture via hotkey (default: `Ctrl+Shift+P`).
 - System tray menu for pause/resume and quit.
+- Drag mode to reposition the overlay (tray or settings).
