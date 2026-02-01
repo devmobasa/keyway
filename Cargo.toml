@@ -1,0 +1,31 @@
+[package]
+name = "keyway-visualizer"
+version = "0.1.0"
+edition = "2021"
+description = "Minimal Wayland keystroke overlay using evdev + GTK4 layer-shell"
+license = "MIT"
+
+[dependencies]
+# GTK4 + layer-shell overlay
+# Keep versions aligned with examples/keystroke for compatibility.
+gtk4 = { version = "0.9", features = ["v4_12"] }
+gtk4-layer-shell = "0.4"
+
+# Input handling
+evdev = "0.12"
+nix = { version = "0.29", features = ["poll"] }
+xkbcommon = "0.9"
+
+# Async channel between input threads and GTK main loop
+async-channel = "2.3"
+
+# Error handling + logging
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
