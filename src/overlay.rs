@@ -1,7 +1,7 @@
 use crate::combo::ComboItem;
 use crate::settings::{Position, Settings};
 use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, Box as GtkBox, CssProvider, Label, Orientation};
+use gtk4::{gdk, Application, ApplicationWindow, Box as GtkBox, CenterBox, CssProvider, Label, Orientation};
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use std::collections::VecDeque;
 
@@ -32,6 +32,7 @@ const OVERLAY_CSS: &str = r#"
 #[derive(Clone)]
 pub struct OverlayWindow {
     window: ApplicationWindow,
+    root: CenterBox,
     container: GtkBox,
 }
 
@@ -46,10 +47,9 @@ impl OverlayWindow {
         window.init_layer_shell();
         window.set_layer(Layer::Overlay);
         window.set_namespace("keyway-visualizer");
-        window.set_keyboard_mode(KeyboardMode::None);
-
-        apply_position(&window, settings.position, settings.margin);
-        window.set_exclusive_zone(0);
+        let root = CenterBox::new();
+        root.set_hexpand(true);
+        root.set_vexpand(true);
 
         let container = GtkBox::new(Orientation::Horizontal, 8);
         container.set_margin_top(8);
@@ -57,14 +57,23 @@ impl OverlayWindow {
         container.set_margin_start(8);
         container.set_margin_end(8);
 
-        window.set_child(Some(&container));
+        window.set_keyboard_mode(KeyboardMode::None);
+
+        apply_position(&window, &root, &container, settings.position, settings.margin);
+        window.set_exclusive_zone(0);
+
+        window.set_child(Some(&root));
         window.add_css_class("keyway-window");
 
         apply_css(&window);
 
         window.present();
 
-        Self { window, container }
+        Self {
+            window,
+            root,
+            container,
+        }
     }
 
     pub fn render(&self, combos: &VecDeque<ComboItem>, paused: bool) {
@@ -91,7 +100,7 @@ impl OverlayWindow {
     }
 
     pub fn update_position(&self, position: Position, margin: i32) {
-        apply_position(&self.window, position, margin);
+        apply_position(&self.window, &self.root, &self.container, position, margin);
         self.window.queue_resize();
     }
 }
@@ -108,31 +117,75 @@ fn apply_css(window: &ApplicationWindow) {
     );
 }
 
-fn apply_position(window: &ApplicationWindow, position: Position, margin: i32) {
+fn apply_position(
+    window: &ApplicationWindow,
+    root: &CenterBox,
+    container: &GtkBox,
+    position: Position,
+    margin: i32,
+) {
+    apply_size_for_position(window, position, margin);
+
+    root.set_start_widget(None::<&gtk4::Widget>);
+    root.set_center_widget(None::<&gtk4::Widget>);
+    root.set_end_widget(None::<&gtk4::Widget>);
+
     match position {
         Position::BottomRight => {
             window.set_anchor(Edge::Top, false);
             window.set_anchor(Edge::Bottom, true);
             window.set_anchor(Edge::Left, false);
             window.set_anchor(Edge::Right, true);
+            root.set_end_widget(Some(container));
+            container.set_valign(gtk4::Align::End);
+        }
+        Position::BottomCenter => {
+            window.set_anchor(Edge::Top, false);
+            window.set_anchor(Edge::Bottom, true);
+            window.set_anchor(Edge::Left, true);
+            window.set_anchor(Edge::Right, true);
+            root.set_center_widget(Some(container));
+            container.set_valign(gtk4::Align::End);
         }
         Position::BottomLeft => {
             window.set_anchor(Edge::Top, false);
             window.set_anchor(Edge::Bottom, true);
             window.set_anchor(Edge::Left, true);
             window.set_anchor(Edge::Right, false);
+            root.set_start_widget(Some(container));
+            container.set_valign(gtk4::Align::End);
         }
         Position::TopRight => {
             window.set_anchor(Edge::Top, true);
             window.set_anchor(Edge::Bottom, false);
             window.set_anchor(Edge::Left, false);
             window.set_anchor(Edge::Right, true);
+            root.set_end_widget(Some(container));
+            container.set_valign(gtk4::Align::Start);
+        }
+        Position::TopCenter => {
+            window.set_anchor(Edge::Top, true);
+            window.set_anchor(Edge::Bottom, false);
+            window.set_anchor(Edge::Left, true);
+            window.set_anchor(Edge::Right, true);
+            root.set_center_widget(Some(container));
+            container.set_valign(gtk4::Align::Start);
         }
         Position::TopLeft => {
             window.set_anchor(Edge::Top, true);
             window.set_anchor(Edge::Bottom, false);
             window.set_anchor(Edge::Left, true);
             window.set_anchor(Edge::Right, false);
+            root.set_start_widget(Some(container));
+            container.set_valign(gtk4::Align::Start);
+        }
+        Position::Center => {
+            window.set_anchor(Edge::Top, true);
+            window.set_anchor(Edge::Bottom, true);
+            window.set_anchor(Edge::Left, true);
+            window.set_anchor(Edge::Right, true);
+            root.set_center_widget(Some(container));
+            container.set_valign(gtk4::Align::Center);
         }
     }
 
@@ -140,4 +193,44 @@ fn apply_position(window: &ApplicationWindow, position: Position, margin: i32) {
     window.set_margin(Edge::Bottom, margin);
     window.set_margin(Edge::Left, margin);
     window.set_margin(Edge::Right, margin);
+}
+
+fn apply_size_for_position(window: &ApplicationWindow, position: Position, margin: i32) {
+    let span_x = matches!(
+        position,
+        Position::BottomCenter | Position::TopCenter | Position::Center
+    );
+    let span_y = matches!(position, Position::Center);
+
+    if !(span_x || span_y) {
+        window.set_default_size(-1, -1);
+        return;
+    }
+
+    let Some(display) = gdk::Display::default() else {
+        return;
+    };
+
+    let monitor = display
+        .monitors()
+        .item(0)
+        .and_downcast::<gdk::Monitor>();
+
+    let Some(monitor) = monitor else {
+        return;
+    };
+
+    let geometry = monitor.geometry();
+    let width = if span_x {
+        (geometry.width() - margin.saturating_mul(2)).max(1)
+    } else {
+        -1
+    };
+    let height = if span_y {
+        (geometry.height() - margin.saturating_mul(2)).max(1)
+    } else {
+        -1
+    };
+
+    window.set_default_size(width, height);
 }

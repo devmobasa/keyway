@@ -45,6 +45,8 @@ You can override via CLI:
 cargo run -- --position top-left --ttl-ms 1200 --show-mouse false
 ```
 
+Positions supported: `bottom-right`, `bottom-center`, `bottom-left`, `top-right`, `top-center`, `top-left`, `center`.
+
 Hotkey parsing accepts tokens like `Ctrl+Shift+P`, `Super+F13`, and named keys like `Plus` or `Comma` for symbols.
 
 ## Settings UI

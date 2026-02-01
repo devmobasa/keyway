@@ -51,9 +51,12 @@ pub struct CliArgs {
 #[value(rename_all = "kebab-case")]
 pub enum Position {
     BottomRight,
+    BottomCenter,
     BottomLeft,
     TopRight,
+    TopCenter,
     TopLeft,
+    Center,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

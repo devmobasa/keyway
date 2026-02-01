@@ -5,7 +5,15 @@ use gtk4::{
     Label, Orientation, SpinButton, StringList, Switch,
 };
 
-const POSITIONS: [&str; 4] = ["bottom-right", "bottom-left", "top-right", "top-left"];
+const POSITIONS: [&str; 7] = [
+    "bottom-right",
+    "bottom-center",
+    "bottom-left",
+    "top-right",
+    "top-center",
+    "top-left",
+    "center",
+];
 
 pub struct SettingsWindow {
     pub window: ApplicationWindow,
@@ -161,17 +169,23 @@ fn attach_row(grid: &Grid, row: i32, label: &str, widget: &impl IsA<gtk4::Widget
 fn position_to_index(position: Position) -> u32 {
     match position {
         Position::BottomRight => 0,
-        Position::BottomLeft => 1,
-        Position::TopRight => 2,
-        Position::TopLeft => 3,
+        Position::BottomCenter => 1,
+        Position::BottomLeft => 2,
+        Position::TopRight => 3,
+        Position::TopCenter => 4,
+        Position::TopLeft => 5,
+        Position::Center => 6,
     }
 }
 
 fn index_to_position(index: u32) -> Position {
     match index {
-        1 => Position::BottomLeft,
-        2 => Position::TopRight,
-        3 => Position::TopLeft,
+        1 => Position::BottomCenter,
+        2 => Position::BottomLeft,
+        3 => Position::TopRight,
+        4 => Position::TopCenter,
+        5 => Position::TopLeft,
+        6 => Position::Center,
         _ => Position::BottomRight,
     }
 }
