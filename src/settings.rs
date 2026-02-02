@@ -56,9 +56,17 @@ pub struct CliArgs {
     /// Custom Y position (pixels from top) when position=custom
     #[arg(long)]
     pub custom_y: Option<i32>,
+
+    /// Enable per-app filtering
+    #[arg(long)]
+    pub app_filter_enabled: Option<bool>,
+
+    /// Disable overlay for matching app class/title (repeatable)
+    #[arg(long = "disabled-app")]
+    pub disabled_apps: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, ValueEnum)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ValueEnum, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 #[value(rename_all = "kebab-case")]
 pub enum Position {
@@ -86,6 +94,8 @@ pub struct Settings {
     pub drag_enabled: bool,
     pub custom_x: i32,
     pub custom_y: i32,
+    pub app_filter_enabled: bool,
+    pub disabled_apps: Vec<String>,
 }
 
 impl Default for Settings {
@@ -102,6 +112,8 @@ impl Default for Settings {
             drag_enabled: false,
             custom_x: 40,
             custom_y: 40,
+            app_filter_enabled: false,
+            disabled_apps: Vec::new(),
         }
     }
 }
@@ -168,6 +180,17 @@ impl Settings {
         }
         if let Some(custom_y) = cli.custom_y {
             self.custom_y = custom_y;
+        }
+        if let Some(app_filter_enabled) = cli.app_filter_enabled {
+            self.app_filter_enabled = app_filter_enabled;
+        }
+        if !cli.disabled_apps.is_empty() {
+            self.disabled_apps = cli
+                .disabled_apps
+                .iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
         }
     }
     pub fn save_to(&self, path: &Path) -> Result<()> {

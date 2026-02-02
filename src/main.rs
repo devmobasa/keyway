@@ -18,12 +18,14 @@ use gtk4::Application;
 use input::{InputListener, ListenerConfig};
 use overlay::OverlayWindow;
 use settings::{CliArgs, Settings};
+use serde_json::Value;
 use settings_window::SettingsWindow;
 use std::cell::RefCell;
 use std::path::PathBuf;
+use std::process::Command;
 use std::rc::Rc;
-use std::time::Duration;
-use tracing::{error, info};
+use std::time::{Duration, Instant};
+use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use tray::{TrayAction, TrayHandle};
 
@@ -89,6 +91,9 @@ fn build_ui(app: &Application, settings: Settings, config_path: PathBuf) -> Resu
         dragging: false,
         drag_base_x: 0,
         drag_base_y: 0,
+        app_filter_suppressed: false,
+        last_app_check: Instant::now(),
+        app_filter_warned: false,
     }));
 
     if let Some(handle) = &state.borrow().tray_handle {
@@ -158,16 +163,25 @@ fn start_event_pump(
 
         {
             let mut app_state = state.borrow_mut();
-            while let Ok(event) = rx.try_recv() {
-                let action = app_state.combo.handle_event(event);
-                apply_combo_action(&mut changed, &mut paused_changed, action);
-            }
-
-            if app_state.combo.prune_expired() {
+            let now = Instant::now();
+            if app_state.update_app_filter(now) {
                 changed = true;
             }
 
-            if changed {
+            while let Ok(event) = rx.try_recv() {
+                if app_state.app_filter_suppressed {
+                    app_state.combo.handle_event_suppressed(event);
+                } else {
+                    let action = app_state.combo.handle_event(event);
+                    apply_combo_action(&mut changed, &mut paused_changed, action);
+                }
+            }
+
+            if !app_state.app_filter_suppressed && app_state.combo.prune_expired() {
+                changed = true;
+            }
+
+            if changed && !app_state.app_filter_suppressed {
                 app_state
                     .overlay
                     .render(app_state.combo.items(), app_state.combo.paused());
@@ -266,6 +280,14 @@ fn apply_settings_from_window(window: &SettingsWindow, state: &Rc<RefCell<AppSta
     let base_settings = state.borrow().settings.clone();
     let new_settings = window.read_settings(&base_settings);
 
+    if let Err(msg) = window.validate(&new_settings) {
+        window.set_status(&msg);
+        return;
+    }
+
+    let warn_empty_filter =
+        new_settings.app_filter_enabled && new_settings.disabled_apps.is_empty();
+
     let result = {
         let mut app_state = state.borrow_mut();
         app_state.apply_settings(new_settings)
@@ -282,9 +304,17 @@ fn apply_settings_from_window(window: &SettingsWindow, state: &Rc<RefCell<AppSta
                     window.set_status(&format!("Save failed: {}", e));
                     return;
                 }
-                window.set_status("Saved");
+                if warn_empty_filter {
+                    window.set_status("Saved (app filter enabled but list is empty)");
+                } else {
+                    window.set_status("Saved");
+                }
             } else {
-                window.set_status("Applied");
+                if warn_empty_filter {
+                    window.set_status("Applied (app filter enabled but list is empty)");
+                } else {
+                    window.set_status("Applied");
+                }
             }
         }
         Err(e) => {
@@ -305,6 +335,9 @@ struct AppState {
     dragging: bool,
     drag_base_x: i32,
     drag_base_y: i32,
+    app_filter_suppressed: bool,
+    last_app_check: Instant,
+    app_filter_warned: bool,
 }
 
 impl AppState {
@@ -331,6 +364,11 @@ impl AppState {
         );
 
         self.settings = new_settings;
+        self.app_filter_warned = false;
+        self.last_app_check = Instant::now()
+            .checked_sub(Duration::from_millis(1000))
+            .unwrap_or_else(Instant::now);
+        let _ = self.update_app_filter(Instant::now());
         self.overlay.render(self.combo.items(), self.combo.paused());
 
         Ok(())
@@ -417,6 +455,79 @@ impl AppState {
     fn end_drag(&mut self) {
         self.dragging = false;
     }
+
+    fn update_app_filter(&mut self, now: Instant) -> bool {
+        if !self.settings.app_filter_enabled {
+            if self.app_filter_suppressed {
+                self.app_filter_suppressed = false;
+                self.overlay.set_visible(true);
+                return true;
+            }
+            return false;
+        }
+
+        if now.duration_since(self.last_app_check) < Duration::from_millis(500) {
+            return false;
+        }
+
+        self.last_app_check = now;
+
+        let Some(info) = get_active_app_info() else {
+            if !self.app_filter_warned {
+                warn!("App filter enabled but hyprctl is not available or returned no data.");
+                self.app_filter_warned = true;
+            }
+            if self.app_filter_suppressed {
+                self.app_filter_suppressed = false;
+                self.combo.clear_items();
+                self.overlay.set_visible(true);
+                return true;
+            }
+            return false;
+        };
+
+        let class_lower = info.class.to_ascii_lowercase();
+        let title_lower = info.title.to_ascii_lowercase();
+        let disabled = self.settings.disabled_apps.iter().any(|entry| {
+            let needle = entry.to_ascii_lowercase();
+            class_lower.contains(&needle) || title_lower.contains(&needle)
+        });
+
+        if disabled != self.app_filter_suppressed {
+            self.app_filter_suppressed = disabled;
+            if disabled {
+                self.combo.clear_items();
+                self.overlay.set_visible(false);
+            } else {
+                self.overlay.set_visible(true);
+            }
+            return true;
+        }
+
+        false
+    }
+}
+
+struct ActiveAppInfo {
+    class: String,
+    title: String,
+}
+
+fn get_active_app_info() -> Option<ActiveAppInfo> {
+    let output = Command::new("hyprctl")
+        .args(["-j", "activewindow"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let value: Value = serde_json::from_slice(&output.stdout).ok()?;
+    let class = value.get("class")?.as_str()?.to_string();
+    let title = value.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+    Some(ActiveAppInfo { class, title })
 }
 
 fn compute_custom_offsets(

@@ -1,8 +1,9 @@
 use crate::settings::{Position, Settings};
+use crate::hotkey::Hotkey;
 use gtk4::prelude::*;
 use gtk4::{
     Adjustment, Application, ApplicationWindow, Box as GtkBox, Button, DropDown, Entry, Grid,
-    Label, Orientation, SpinButton, StringList, Switch,
+    Label, Orientation, ScrolledWindow, SpinButton, StringList, Switch, TextBuffer, TextView,
 };
 
 const POSITIONS: [&str; 8] = [
@@ -29,6 +30,8 @@ pub struct SettingsWindow {
     drag_enabled: Switch,
     custom_x: SpinButton,
     custom_y: SpinButton,
+    app_filter_enabled: Switch,
+    disabled_apps: TextView,
     status: Label,
     apply_button: Button,
     save_button: Button,
@@ -43,6 +46,8 @@ impl SettingsWindow {
             .default_width(420)
             .default_height(320)
             .build();
+
+        apply_css(&window);
 
         let content = GtkBox::new(Orientation::Vertical, 12);
         content.set_margin_top(16);
@@ -65,6 +70,20 @@ impl SettingsWindow {
         let drag_enabled = Switch::new();
         let custom_x = spin_i32(40, 0, 5000, 10);
         let custom_y = spin_i32(40, 0, 5000, 10);
+        let app_filter_enabled = Switch::new();
+        let disabled_buffer = TextBuffer::new(None::<&gtk4::TextTagTable>);
+        let disabled_apps = TextView::with_buffer(&disabled_buffer);
+        disabled_apps.set_monospace(true);
+        disabled_apps.set_wrap_mode(gtk4::WrapMode::WordChar);
+        disabled_apps.set_vexpand(true);
+        disabled_apps.set_tooltip_text(Some(
+            "One entry per line. Matches app class or title (case-insensitive).",
+        ));
+
+        let disabled_scroll = ScrolledWindow::builder()
+            .min_content_height(90)
+            .child(&disabled_apps)
+            .build();
 
         attach_row(&grid, 0, "Position", &position);
         attach_row(&grid, 1, "Margin", &margin);
@@ -77,6 +96,8 @@ impl SettingsWindow {
         attach_row(&grid, 8, "Drag mode", &drag_enabled);
         attach_row(&grid, 9, "Custom X", &custom_x);
         attach_row(&grid, 10, "Custom Y", &custom_y);
+        attach_row(&grid, 11, "App filter", &app_filter_enabled);
+        attach_row(&grid, 12, "Disabled apps", &disabled_scroll);
 
         let status = Label::new(None);
         status.set_wrap(true);
@@ -111,6 +132,8 @@ impl SettingsWindow {
             drag_enabled,
             custom_x,
             custom_y,
+            app_filter_enabled,
+            disabled_apps,
             status,
             apply_button,
             save_button,
@@ -136,6 +159,12 @@ impl SettingsWindow {
         self.drag_enabled.set_active(settings.drag_enabled);
         self.custom_x.set_value(settings.custom_x as f64);
         self.custom_y.set_value(settings.custom_y as f64);
+        self.app_filter_enabled
+            .set_active(settings.app_filter_enabled);
+        let disabled_text = settings.disabled_apps.join("\n");
+        self.disabled_apps
+            .buffer()
+            .set_text(&disabled_text);
         self.set_status("");
     }
 
@@ -152,8 +181,30 @@ impl SettingsWindow {
             drag_enabled: self.drag_enabled.is_active(),
             custom_x: self.custom_x.value() as i32,
             custom_y: self.custom_y.value() as i32,
+            app_filter_enabled: self.app_filter_enabled.is_active(),
+            disabled_apps: read_text_lines(&self.disabled_apps),
             ..base.clone()
         }
+    }
+
+    pub fn validate(&self, settings: &Settings) -> Result<(), String> {
+        self.pause_hotkey.remove_css_class("error");
+        self.custom_x.remove_css_class("error");
+        self.custom_y.remove_css_class("error");
+
+        if Hotkey::parse(&settings.pause_hotkey).is_err() {
+            self.pause_hotkey.add_css_class("error");
+            return Err("Invalid pause hotkey".to_string());
+        }
+
+        if settings.position == Position::Custom && (settings.custom_x < 0 || settings.custom_y < 0)
+        {
+            self.custom_x.add_css_class("error");
+            self.custom_y.add_css_class("error");
+            return Err("Custom position must be non-negative".to_string());
+        }
+
+        Ok(())
     }
 
     pub fn connect_apply<F: Fn() + 'static>(&self, callback: F) {
@@ -171,6 +222,36 @@ impl SettingsWindow {
     pub fn set_status(&self, message: &str) {
         self.status.set_text(message);
     }
+}
+
+fn apply_css(window: &ApplicationWindow) {
+    const CSS: &str = r#"
+    entry.error, spinbutton.error, textview.error {
+        border: 1px solid #d44;
+    }
+    "#;
+
+    let provider = gtk4::CssProvider::new();
+    provider.load_from_string(CSS);
+    let display = gtk4::prelude::WidgetExt::display(window);
+    gtk4::style_context_add_provider_for_display(
+        &display,
+        &provider,
+        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
+}
+
+fn read_text_lines(view: &TextView) -> Vec<String> {
+    let buffer = view.buffer();
+    let (start, end) = buffer.bounds();
+    buffer
+        .text(&start, &end, true)
+        .to_string()
+        .lines()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect()
 }
 
 fn spin_i32(value: i32, min: i32, max: i32, step: i32) -> SpinButton {

@@ -51,6 +51,7 @@ impl XkbState {
             Some(utf8)
         }
     }
+
 }
 
 fn key_to_keycode(key: Key) -> xkb::Keycode {

@@ -129,6 +129,32 @@ impl ComboState {
         &self.items
     }
 
+    pub fn clear_items(&mut self) {
+        self.items.clear();
+    }
+
+    pub fn handle_event_suppressed(&mut self, event: InputEvent) {
+        match event {
+            InputEvent::KeyPressed(key) => {
+                self.xkb.update_key(key, true);
+                if is_modifier(key) {
+                    self.held_mods.insert(key);
+                    self.mod_release_at.remove(&key);
+                }
+            }
+            InputEvent::KeyReleased(key) => {
+                self.xkb.update_key(key, false);
+                if is_modifier(key) {
+                    self.mod_release_at.insert(key, Instant::now());
+                }
+            }
+            InputEvent::KeyRepeat(key) => {
+                self.xkb.update_key(key, true);
+            }
+            InputEvent::MouseButtonPressed(_) | InputEvent::MouseButtonReleased => {}
+        }
+    }
+
     pub fn toggle_pause(&mut self) -> bool {
         self.set_paused(!self.paused)
     }

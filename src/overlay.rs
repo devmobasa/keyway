@@ -133,6 +133,10 @@ impl OverlayWindow {
         self.window.set_can_target(enabled);
     }
 
+    pub fn set_visible(&self, visible: bool) {
+        self.window.set_visible(visible);
+    }
+
     pub fn connect_drag_handlers<F1, F2, F3>(&self, on_begin: F1, on_update: F2, on_end: F3)
     where
         F1: Fn(f64, f64) + 'static,

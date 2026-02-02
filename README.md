@@ -40,6 +40,8 @@ modifier_grace_ms = 120
 drag_enabled = false
 custom_x = 40
 custom_y = 40
+app_filter_enabled = false
+disabled_apps = ["firefox", "org.keepassxc.keepassxc"]
 ```
 
 You can override via CLI:
@@ -48,7 +50,7 @@ You can override via CLI:
 cargo run -- --position top-left --ttl-ms 1200 --show-mouse false
 ```
 
-Positions supported: `bottom-right`, `bottom-center`, `bottom-left`, `top-right`, `top-center`, `top-left`, `center`.
+Positions supported: `bottom-right`, `bottom-center`, `bottom-left`, `top-right`, `top-center`, `top-left`, `center`, `custom`.
 Use `custom` with `custom_x/custom_y` for pixel placement, or enable drag mode and move the overlay.
 
 Hotkey parsing accepts tokens like `Ctrl+Shift+P`, `Super+F13`, and named keys like `Plus` or `Comma` for symbols.
@@ -78,3 +80,22 @@ Alternatively, set up a udev rule to grant read access.
 - Pause/resume capture via hotkey (default: `Ctrl+Shift+P`).
 - System tray menu for pause/resume and quit.
 - Drag mode to reposition the overlay (tray or settings).
+- App filter to disable the overlay for specific apps.
+
+## App Filter
+
+App filtering uses `hyprctl -j activewindow` on Hyprland to match against the active window
+`class` or `title` (case-insensitive). Add one string per line in Settings, or use:
+
+```bash
+cargo run -- --app-filter-enabled true --disabled-app firefox --disabled-app keepass
+```
+
+If `hyprctl` is not available, the filter is ignored.
+
+## Packaging (manual)
+
+This repo includes example files you can adapt:
+
+- `packaging/keyway-visualizer.desktop`
+- `packaging/keyway-visualizer.service`
