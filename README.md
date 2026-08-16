@@ -2,6 +2,10 @@
 
 Minimal Wayland keystroke overlay using **evdev** for input and **GTK4 + layer-shell** for the on-screen display.
 
+## Demo
+
+[Watch the demo](demo.webm)
+
 ## Requirements
 
 - Linux (Wayland)
