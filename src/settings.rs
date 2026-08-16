@@ -107,7 +107,7 @@ impl Default for Settings {
             ttl_ms: 900,
             show_mouse: true,
             pause_hotkey: "Ctrl+Shift+P".to_string(),
-            repeat_coalesce_ms: 200,
+            repeat_coalesce_ms: 900,
             modifier_grace_ms: 120,
             drag_enabled: false,
             custom_x: 40,
@@ -201,8 +201,7 @@ impl Settings {
 
         let content = toml::to_string_pretty(self).context("Failed to serialize config")?;
 
-        fs::write(path, content)
-            .with_context(|| format!("Failed to write config: {:?}", path))?;
+        fs::write(path, content).with_context(|| format!("Failed to write config: {:?}", path))?;
 
         Ok(())
     }

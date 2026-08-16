@@ -1,7 +1,10 @@
 use crate::combo::ComboItem;
 use crate::settings::{Position, Settings};
 use gtk4::prelude::*;
-use gtk4::{gdk, Application, ApplicationWindow, Box as GtkBox, CenterBox, CssProvider, GestureDrag, Label, Orientation};
+use gtk4::{
+    gdk, Application, ApplicationWindow, Box as GtkBox, CenterBox, CssProvider, GestureDrag, Label,
+    Orientation,
+};
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use std::collections::VecDeque;
 
@@ -104,9 +107,9 @@ impl OverlayWindow {
         }
 
         for combo in combos {
-            let label = Label::new(Some(&combo.text));
+            let label = Label::new(Some(&combo.display_text()));
             label.add_css_class("key-bubble");
-            if combo.text == "Paused" || combo.text == "Resumed" {
+            if combo.is_status() {
                 label.add_css_class("status");
             }
             self.container.append(&label);
@@ -164,7 +167,10 @@ impl OverlayWindow {
     }
 
     pub fn window_size(&self) -> (i32, i32) {
-        (self.window.allocated_width(), self.window.allocated_height())
+        (
+            self.window.allocated_width(),
+            self.window.allocated_height(),
+        )
     }
 
     pub fn monitor_geometry(&self) -> Option<gdk::Rectangle> {
@@ -299,10 +305,7 @@ fn apply_size_for_position(window: &ApplicationWindow, position: Position, margi
         return;
     };
 
-    let monitor = display
-        .monitors()
-        .item(0)
-        .and_downcast::<gdk::Monitor>();
+    let monitor = display.monitors().item(0).and_downcast::<gdk::Monitor>();
 
     let Some(monitor) = monitor else {
         return;

@@ -5,10 +5,32 @@ use evdev::Key;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{Duration, Instant};
 
+/// Repeat-counter separator, matching Wayscriber's input HUD (`Backspace ×5`).
+const REPEAT_SEPARATOR: &str = " \u{00d7}";
+
 #[derive(Debug, Clone)]
 pub struct ComboItem {
     pub text: String,
+    pub count: u32,
     pub at: Instant,
+}
+
+impl ComboItem {
+    pub fn display_text(&self) -> String {
+        display_combo_text(&self.text, self.count)
+    }
+
+    pub fn is_status(&self) -> bool {
+        self.text == "Paused" || self.text == "Resumed"
+    }
+}
+
+fn display_combo_text(label: &str, count: u32) -> String {
+    if count > 1 {
+        format!("{label}{REPEAT_SEPARATOR}{count}")
+    } else {
+        label.to_string()
+    }
 }
 
 pub struct ComboState {
@@ -47,7 +69,10 @@ impl ComboState {
     }
 
     pub fn handle_event(&mut self, event: InputEvent) -> ComboAction {
-        let now = Instant::now();
+        self.handle_event_at(event, Instant::now())
+    }
+
+    fn handle_event_at(&mut self, event: InputEvent, now: Instant) -> ComboAction {
         let mut action = ComboAction::default();
 
         self.prune_mods(now);
@@ -62,7 +87,7 @@ impl ComboState {
                     let label = key_label(key, &self.xkb);
 
                     if self.pause_hotkey.matches(&self.held_mods, &label) {
-                        self.toggle_pause();
+                        self.toggle_pause_at(now);
                         action.paused_changed = Some(self.paused());
                         action.render = true;
                         return action;
@@ -98,7 +123,8 @@ impl ComboState {
                     return action;
                 }
                 if let Some(label) = mouse_label(key) {
-                    action.render |= self.push_combo(label.to_string(), now);
+                    let combo = format_combo(&self.held_mods, label);
+                    action.render |= self.push_combo(combo, now);
                 }
             }
             InputEvent::MouseButtonReleased => {}
@@ -108,7 +134,10 @@ impl ComboState {
     }
 
     pub fn prune_expired(&mut self) -> bool {
-        let now = Instant::now();
+        self.prune_expired_at(Instant::now())
+    }
+
+    fn prune_expired_at(&mut self, now: Instant) -> bool {
         let mut changed = false;
 
         self.prune_mods(now);
@@ -156,7 +185,11 @@ impl ComboState {
     }
 
     pub fn toggle_pause(&mut self) -> bool {
-        self.set_paused(!self.paused)
+        self.toggle_pause_at(Instant::now())
+    }
+
+    fn toggle_pause_at(&mut self, now: Instant) -> bool {
+        self.set_paused(!self.paused, now)
     }
 
     pub fn paused(&self) -> bool {
@@ -182,32 +215,50 @@ impl ComboState {
         }
     }
 
-    fn set_paused(&mut self, paused: bool) -> bool {
+    fn set_paused(&mut self, paused: bool, now: Instant) -> bool {
         if self.paused == paused {
             return false;
         }
 
         self.paused = paused;
         let label = if paused { "Paused" } else { "Resumed" };
-        let _ = self.push_combo(label.to_string(), Instant::now());
+        let _ = self.push_combo(label.to_string(), now);
         true
     }
 
     fn push_combo(&mut self, text: String, now: Instant) -> bool {
-        if let Some(back) = self.items.back_mut() {
-            if back.text == text && now.duration_since(back.at) <= self.repeat_coalesce {
+        if self.should_coalesce(&text, now) {
+            if let Some(back) = self.items.back_mut() {
+                back.count = back.count.saturating_add(1);
                 back.at = now;
                 return true;
             }
         }
 
-        self.items.push_back(ComboItem { text, at: now });
+        self.items.push_back(ComboItem {
+            text,
+            count: 1,
+            at: now,
+        });
 
         while self.items.len() > self.max_items {
             self.items.pop_front();
         }
 
         true
+    }
+
+    /// Stack consecutive identical chips while the last one is still on screen
+    /// and the gap since its last press is within `repeat_coalesce`.
+    /// `repeat_coalesce_ms == 0` turns combining off.
+    fn should_coalesce(&self, text: &str, now: Instant) -> bool {
+        if self.repeat_coalesce.is_zero() {
+            return false;
+        }
+        let window = self.repeat_coalesce.min(self.ttl);
+        self.items
+            .back()
+            .is_some_and(|newest| newest.text == text && now.duration_since(newest.at) <= window)
     }
 
     fn prune_mods(&mut self, now: Instant) {
@@ -281,6 +332,21 @@ fn mouse_label(key: Key) -> Option<&'static str> {
 mod tests {
     use super::*;
 
+    fn test_state() -> ComboState {
+        ComboState::new(
+            5,
+            Duration::from_millis(900),
+            Duration::from_millis(900),
+            Duration::from_millis(120),
+            Hotkey::parse("Ctrl+Shift+P").unwrap(),
+        )
+    }
+
+    fn press_at(state: &mut ComboState, key: Key, at: Instant) {
+        state.handle_event_at(InputEvent::KeyPressed(key), at);
+        state.handle_event_at(InputEvent::KeyReleased(key), at + Duration::from_millis(10));
+    }
+
     #[test]
     fn format_combo_orders_mods() {
         let mut mods = HashSet::new();
@@ -290,5 +356,113 @@ mod tests {
 
         let combo = format_combo(&mods, "A");
         assert_eq!(combo, "Ctrl+Shift+Alt+A");
+    }
+
+    #[test]
+    fn display_combo_text_omits_the_counter_for_a_single_press() {
+        assert_eq!(display_combo_text("Backspace", 1), "Backspace");
+        assert_eq!(display_combo_text("Backspace", 5), "Backspace ×5");
+    }
+
+    #[test]
+    fn repeated_backspaces_coalesce_into_a_counter() {
+        let mut state = test_state();
+        let start = Instant::now();
+        for i in 0..5 {
+            press_at(
+                &mut state,
+                Key::KEY_BACKSPACE,
+                start + Duration::from_millis(i * 40),
+            );
+        }
+
+        assert_eq!(state.items().len(), 1);
+        let item = state.items().front().unwrap();
+        assert_eq!(item.text, "Backspace");
+        assert_eq!(item.count, 5);
+        assert_eq!(item.display_text(), "Backspace ×5");
+    }
+
+    #[test]
+    fn key_repeat_increments_the_same_chip() {
+        let mut state = test_state();
+        let start = Instant::now();
+        state.handle_event_at(InputEvent::KeyPressed(Key::KEY_BACKSPACE), start);
+        state.handle_event_at(
+            InputEvent::KeyRepeat(Key::KEY_BACKSPACE),
+            start + Duration::from_millis(30),
+        );
+        state.handle_event_at(
+            InputEvent::KeyRepeat(Key::KEY_BACKSPACE),
+            start + Duration::from_millis(60),
+        );
+
+        let item = state.items().front().unwrap();
+        assert_eq!(item.count, 3);
+        assert_eq!(item.display_text(), "Backspace ×3");
+    }
+
+    #[test]
+    fn a_different_key_starts_a_new_chip() {
+        let mut state = test_state();
+        let start = Instant::now();
+        press_at(&mut state, Key::KEY_BACKSPACE, start);
+        press_at(
+            &mut state,
+            Key::KEY_ENTER,
+            start + Duration::from_millis(40),
+        );
+
+        let labels: Vec<_> = state
+            .items()
+            .iter()
+            .map(|item| (item.text.as_str(), item.count))
+            .collect();
+        assert_eq!(labels, vec![("Backspace", 1), ("Enter", 1)]);
+    }
+
+    #[test]
+    fn repeats_outside_the_coalesce_window_stay_separate() {
+        let mut state = ComboState::new(
+            5,
+            Duration::from_millis(900),
+            Duration::from_millis(80),
+            Duration::from_millis(120),
+            Hotkey::parse("Ctrl+Shift+P").unwrap(),
+        );
+        let start = Instant::now();
+        press_at(&mut state, Key::KEY_A, start);
+        press_at(&mut state, Key::KEY_A, start + Duration::from_millis(200));
+
+        assert_eq!(state.items().len(), 2);
+        assert!(state.items().iter().all(|item| item.count == 1));
+    }
+
+    #[test]
+    fn zero_coalesce_window_keeps_repeats_separate() {
+        let mut state = ComboState::new(
+            5,
+            Duration::from_millis(900),
+            Duration::ZERO,
+            Duration::from_millis(120),
+            Hotkey::parse("Ctrl+Shift+P").unwrap(),
+        );
+        let start = Instant::now();
+        press_at(&mut state, Key::KEY_A, start);
+        press_at(&mut state, Key::KEY_A, start + Duration::from_millis(10));
+
+        assert_eq!(state.items().len(), 2);
+    }
+
+    #[test]
+    fn mouse_clicks_include_held_modifiers() {
+        let mut state = test_state();
+        let start = Instant::now();
+        state.handle_event_at(InputEvent::KeyPressed(Key::KEY_LEFTCTRL), start);
+        state.handle_event_at(InputEvent::MouseButtonPressed(Key::BTN_LEFT), start);
+
+        let item = state.items().front().unwrap();
+        assert_eq!(item.text, "Ctrl+LMB");
+        assert_eq!(item.count, 1);
     }
 }

@@ -53,10 +53,14 @@ impl Hotkey {
             return false;
         }
 
-        let has_ctrl = held_mods.contains(&Key::KEY_LEFTCTRL) || held_mods.contains(&Key::KEY_RIGHTCTRL);
-        let has_shift = held_mods.contains(&Key::KEY_LEFTSHIFT) || held_mods.contains(&Key::KEY_RIGHTSHIFT);
-        let has_alt = held_mods.contains(&Key::KEY_LEFTALT) || held_mods.contains(&Key::KEY_RIGHTALT);
-        let has_super = held_mods.contains(&Key::KEY_LEFTMETA) || held_mods.contains(&Key::KEY_RIGHTMETA);
+        let has_ctrl =
+            held_mods.contains(&Key::KEY_LEFTCTRL) || held_mods.contains(&Key::KEY_RIGHTCTRL);
+        let has_shift =
+            held_mods.contains(&Key::KEY_LEFTSHIFT) || held_mods.contains(&Key::KEY_RIGHTSHIFT);
+        let has_alt =
+            held_mods.contains(&Key::KEY_LEFTALT) || held_mods.contains(&Key::KEY_RIGHTALT);
+        let has_super =
+            held_mods.contains(&Key::KEY_LEFTMETA) || held_mods.contains(&Key::KEY_RIGHTMETA);
 
         self.ctrl == has_ctrl
             && self.shift == has_shift
@@ -111,10 +115,10 @@ fn normalize_key_token(token: &str) -> String {
         "pgdn" | "pagedown" => "PgDn".to_string(),
         "home" => "Home".to_string(),
         "end" => "End".to_string(),
-        "left" => "Left".to_string(),
-        "right" => "Right".to_string(),
-        "up" => "Up".to_string(),
-        "down" => "Down".to_string(),
+        "left" | "\u{2190}" => "Left".to_string(),
+        "right" | "\u{2192}" => "Right".to_string(),
+        "up" | "\u{2191}" => "Up".to_string(),
+        "down" | "\u{2193}" => "Down".to_string(),
         "prtsc" | "print" | "printscreen" => "PrtSc".to_string(),
         "plus" | "add" => "+".to_string(),
         "minus" | "dash" | "subtract" => "-".to_string(),
@@ -152,5 +156,13 @@ mod tests {
 
         mods.insert(Key::KEY_LEFTSHIFT);
         assert!(!hotkey.matches(&mods, "P"));
+    }
+
+    #[test]
+    fn arrow_glyphs_match_named_arrow_hotkeys() {
+        let hotkey = Hotkey::parse("Up").unwrap();
+        let mods = HashSet::new();
+        assert!(hotkey.matches(&mods, "\u{2191}"));
+        assert!(hotkey.matches(&mods, "Up"));
     }
 }

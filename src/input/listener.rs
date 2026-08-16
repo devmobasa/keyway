@@ -115,10 +115,8 @@ impl InputListener {
         if self.config.include_mouse {
             match discover_mice() {
                 Ok(mice) => {
-                    let keyboard_paths: HashSet<PathBuf> = devices
-                        .iter()
-                        .map(|d| d.path.clone())
-                        .collect();
+                    let keyboard_paths: HashSet<PathBuf> =
+                        devices.iter().map(|d| d.path.clone()).collect();
 
                     devices.extend(
                         mice.into_iter()
@@ -149,7 +147,11 @@ impl InputListener {
     }
 }
 
-fn listen_device(device_info: ListenerDevice, sender: Sender<InputEvent>, running: Arc<AtomicBool>) -> Result<()> {
+fn listen_device(
+    device_info: ListenerDevice,
+    sender: Sender<InputEvent>,
+    running: Arc<AtomicBool>,
+) -> Result<()> {
     let mut device = device_info.open()?;
     info!("Listening to {}: {}", device_info.kind, device_info.name);
 
@@ -164,7 +166,12 @@ fn listen_device(device_info: ListenerDevice, sender: Sender<InputEvent>, runnin
 
         match poll_result {
             Ok(_) => {
-                if let Err(e) = process_events(&mut device, &sender, device_info.include_mouse_buttons, &mut pressed_keys) {
+                if let Err(e) = process_events(
+                    &mut device,
+                    &sender,
+                    device_info.include_mouse_buttons,
+                    &mut pressed_keys,
+                ) {
                     if e.to_string().contains("Channel closed") {
                         info!("Channel closed, stopping listener for {}", device_info.name);
                         break;
@@ -179,7 +186,10 @@ fn listen_device(device_info: ListenerDevice, sender: Sender<InputEvent>, runnin
         }
     }
 
-    info!("Stopped listening to {}: {}", device_info.kind, device_info.name);
+    info!(
+        "Stopped listening to {}: {}",
+        device_info.kind, device_info.name
+    );
     Ok(())
 }
 

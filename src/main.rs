@@ -9,16 +9,16 @@ mod xkb;
 
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
-use combo::{ComboAction, ComboState};
 use clap::Parser;
-use hotkey::Hotkey;
+use combo::{ComboAction, ComboState};
 use gtk4::glib::{self, ControlFlow};
 use gtk4::prelude::*;
 use gtk4::Application;
+use hotkey::Hotkey;
 use input::{InputListener, ListenerConfig};
 use overlay::OverlayWindow;
-use settings::{CliArgs, Settings};
 use serde_json::Value;
+use settings::{CliArgs, Settings};
 use settings_window::SettingsWindow;
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -217,7 +217,10 @@ fn init_logging() {
         .init();
 }
 
-fn start_listener(tx: &Sender<input::InputEvent>, include_mouse: bool) -> Result<input::ListenerHandle> {
+fn start_listener(
+    tx: &Sender<input::InputEvent>,
+    include_mouse: bool,
+) -> Result<input::ListenerHandle> {
     let listener = InputListener::new(
         tx.clone(),
         ListenerConfig {
@@ -228,11 +231,7 @@ fn start_listener(tx: &Sender<input::InputEvent>, include_mouse: bool) -> Result
     listener.start()
 }
 
-fn apply_combo_action(
-    changed: &mut bool,
-    paused_changed: &mut Option<bool>,
-    action: ComboAction,
-) {
+fn apply_combo_action(changed: &mut bool, paused_changed: &mut Option<bool>, action: ComboAction) {
     if action.render {
         *changed = true;
     }
@@ -525,7 +524,11 @@ fn get_active_app_info() -> Option<ActiveAppInfo> {
 
     let value: Value = serde_json::from_slice(&output.stdout).ok()?;
     let class = value.get("class")?.as_str()?.to_string();
-    let title = value.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let title = value
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     Some(ActiveAppInfo { class, title })
 }
@@ -544,10 +547,9 @@ fn compute_custom_offsets(
     let center_y = (monitor_h - window_h).max(0) / 2;
 
     let (mut x, mut y) = match position {
-        settings::Position::BottomRight => (
-            monitor_w - window_w - margin,
-            monitor_h - window_h - margin,
-        ),
+        settings::Position::BottomRight => {
+            (monitor_w - window_w - margin, monitor_h - window_h - margin)
+        }
         settings::Position::BottomCenter => (center_x, monitor_h - window_h - margin),
         settings::Position::BottomLeft => (margin, monitor_h - window_h - margin),
         settings::Position::TopRight => (monitor_w - window_w - margin, margin),

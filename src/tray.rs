@@ -64,7 +64,13 @@ impl Tray for VisualizerTray {
         let drag_label = self
             .state
             .lock()
-            .map(|s| if s.drag_enabled { "Disable Drag" } else { "Enable Drag" })
+            .map(|s| {
+                if s.drag_enabled {
+                    "Disable Drag"
+                } else {
+                    "Enable Drag"
+                }
+            })
             .unwrap_or("Enable Drag");
 
         vec![
@@ -153,8 +159,9 @@ fn is_keyboard_pixel(x: usize, y: usize, size: usize) -> bool {
     let key_row_2 = body_top + 6;
     let key_row_3 = body_top + 9;
 
-    let on_key = (y >= body_top + 2 && y <= body_bottom - 2 && x >= body_left + 2 && x <= body_right - 2)
-        && ((y == key_row_1 || y == key_row_2 || y == key_row_3) && !x.is_multiple_of(3));
+    let on_key =
+        (y >= body_top + 2 && y <= body_bottom - 2 && x >= body_left + 2 && x <= body_right - 2)
+            && ((y == key_row_1 || y == key_row_2 || y == key_row_3) && !x.is_multiple_of(3));
 
     on_body_outline || on_key
 }

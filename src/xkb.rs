@@ -51,7 +51,6 @@ impl XkbState {
             Some(utf8)
         }
     }
-
 }
 
 fn key_to_keycode(key: Key) -> xkb::Keycode {
@@ -101,10 +100,10 @@ fn special_key_label(key: Key) -> Option<&'static str> {
         Key::KEY_TAB => Some("Tab"),
         Key::KEY_CAPSLOCK => Some("Caps"),
         Key::KEY_SPACE => Some("Space"),
-        Key::KEY_LEFT => Some("Left"),
-        Key::KEY_RIGHT => Some("Right"),
-        Key::KEY_UP => Some("Up"),
-        Key::KEY_DOWN => Some("Down"),
+        Key::KEY_LEFT => Some("\u{2190}"),
+        Key::KEY_RIGHT => Some("\u{2192}"),
+        Key::KEY_UP => Some("\u{2191}"),
+        Key::KEY_DOWN => Some("\u{2193}"),
         Key::KEY_DELETE => Some("Del"),
         Key::KEY_HOME => Some("Home"),
         Key::KEY_END => Some("End"),
@@ -129,4 +128,26 @@ fn fallback_label(key: Key) -> String {
         return stripped.to_string();
     }
     name
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arrow_keys_use_glyphs() {
+        let state = XkbState::new();
+        assert_eq!(key_label(Key::KEY_UP, &state), "\u{2191}");
+        assert_eq!(key_label(Key::KEY_DOWN, &state), "\u{2193}");
+        assert_eq!(key_label(Key::KEY_LEFT, &state), "\u{2190}");
+        assert_eq!(key_label(Key::KEY_RIGHT, &state), "\u{2192}");
+    }
+
+    #[test]
+    fn named_keys_keep_stable_labels() {
+        let state = XkbState::new();
+        assert_eq!(key_label(Key::KEY_BACKSPACE, &state), "Backspace");
+        assert_eq!(key_label(Key::KEY_ESC, &state), "Esc");
+        assert_eq!(key_label(Key::KEY_ENTER, &state), "Enter");
+    }
 }

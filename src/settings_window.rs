@@ -1,5 +1,5 @@
-use crate::settings::{Position, Settings};
 use crate::hotkey::Hotkey;
+use crate::settings::{Position, Settings};
 use gtk4::prelude::*;
 use gtk4::{
     Adjustment, Application, ApplicationWindow, Box as GtkBox, Button, DropDown, Entry, Grid,
@@ -65,7 +65,7 @@ impl SettingsWindow {
         let ttl_ms = spin_i32(900, 100, 5000, 50);
         let show_mouse = Switch::new();
         let pause_hotkey = Entry::new();
-        let repeat_coalesce_ms = spin_i32(200, 0, 1000, 20);
+        let repeat_coalesce_ms = spin_i32(900, 0, 5000, 50);
         let modifier_grace_ms = spin_i32(120, 0, 1000, 10);
         let drag_enabled = Switch::new();
         let custom_x = spin_i32(40, 0, 5000, 10);
@@ -146,7 +146,8 @@ impl SettingsWindow {
     }
 
     pub fn set_from_settings(&self, settings: &Settings) {
-        self.position.set_selected(position_to_index(settings.position));
+        self.position
+            .set_selected(position_to_index(settings.position));
         self.margin.set_value(settings.margin as f64);
         self.max_items.set_value(settings.max_items as f64);
         self.ttl_ms.set_value(settings.ttl_ms as f64);
@@ -162,9 +163,7 @@ impl SettingsWindow {
         self.app_filter_enabled
             .set_active(settings.app_filter_enabled);
         let disabled_text = settings.disabled_apps.join("\n");
-        self.disabled_apps
-            .buffer()
-            .set_text(&disabled_text);
+        self.disabled_apps.buffer().set_text(&disabled_text);
         self.set_status("");
     }
 
