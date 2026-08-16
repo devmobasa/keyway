@@ -4,7 +4,8 @@ Minimal Wayland keystroke overlay using **evdev** for input and **GTK4 + layer-s
 
 ## Demo
 
-[Watch the demo](demo.webm)
+[demo.webm](https://github.com/user-attachments/assets/d2eb65df-2836-43a2-acb4-ebc203521e3f)
+
 
 ## Requirements
 
